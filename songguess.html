@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Songguess</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#18191b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Songguess">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#18191b;color:#eee;font-family:"Segoe UI",system-ui,sans-serif;display:flex;justify-content:center}
+.app{width:100%;max-width:900px;padding:16px}
+h1{text-align:center;font-size:64px;font-weight:900;letter-spacing:-2px;margin:6px 0 14px}
+.tabs{display:flex;background:#27282a;border-radius:8px;padding:5px;max-width:560px;margin:0 auto 20px}
+.tab{flex:1;text-align:center;padding:10px;border-radius:6px;color:#999;cursor:pointer;font-weight:600;font-size:14px}
+.tab.on{background:#18191b;color:#ddd}
+.row{height:50px;border:1px solid #333;border-radius:6px;margin-bottom:10px;display:flex;align-items:center;padding:0 16px;font-size:15px;background:#18191b}
+.row.bad{color:#ff7b7b}.row.skip{color:#888;font-style:italic}.row.ok{background:#1f3a22;border-color:#4a9;color:#9f9}
+.bar-wrap{position:relative;margin:46px 0 0}
+.lbl{position:absolute;top:-38px;transform:translateX(-12px);font-weight:700;font-size:18px;white-space:nowrap}
+.tri{position:absolute;top:-16px;transform:translateX(-50%);width:0;height:0;border:10px solid transparent;border-top:14px solid #fff;border-bottom:0}
+.bar{position:relative;height:30px;background:#313336;border-radius:6px;overflow:hidden}
+.unl{position:absolute;left:0;top:0;bottom:0;background:#44474b}
+.prog{position:absolute;left:0;top:0;bottom:0;background:#56b928;opacity:.85}
+.mk{position:absolute;top:0;bottom:0;width:2px;background:#18191b}
+.play{display:block;margin:34px auto;width:80px;height:80px;border-radius:50%;border:0;background:#56b928;cursor:pointer;color:#fff;font-size:30px}
+.play:disabled{background:#3b4a35;cursor:wait}
+.bottom{display:flex;gap:10px;position:relative}
+.search{flex:1;display:flex;align-items:center;background:#27282a;border-radius:6px;padding:0 14px}
+.search input{flex:1;background:none;border:0;outline:0;color:#eee;font-size:18px;padding:14px 10px}
+.btn{background:#eee;color:#111;border:0;border-radius:6px;padding:0 28px;font-weight:600;font-size:15px;cursor:pointer}
+.btn:disabled{opacity:.4;cursor:default}
+.dd{position:absolute;left:0;right:110px;bottom:100%;background:#27282a;border:1px solid #3a3b3e;border-radius:6px;margin-bottom:6px;max-height:260px;overflow:auto;z-index:5}
+.dd div{padding:10px 16px;cursor:pointer;font-size:15px}.dd div:hover{background:#34363a}.dd small{color:#999}
+.reveal{display:flex;align-items:center;gap:14px;margin:10px 0;padding:12px;background:#222326;border-radius:8px}
+.reveal img{width:64px;height:64px;border-radius:6px}
+.hide{display:none!important}
+@media(max-width:600px){h1{font-size:42px}.app{padding:10px}.btn{padding:0 16px}.dd{right:0;bottom:calc(100% + 6px)}.bottom{flex-wrap:wrap}.bottom .search{flex-basis:100%}.bottom .btn{flex:1;height:46px}}
+.setup input,.setup textarea{width:100%;background:#27282a;border:1px solid #3a3b3e;color:#eee;border-radius:6px;padding:14px;font-size:15px;margin-bottom:10px;font-family:inherit}
+.setup textarea{height:140px}
+.msg{color:#aaa;font-size:14px;min-height:20px;margin:6px 0 12px}
+.setup .btn{padding:14px 28px}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Songguess</h1>
+  <div class="tabs"><div class="tab on" data-t="game">Jogo</div><div class="tab" data-t="setup">Playlist</div></div>
+
+  <div id="setup" class="setup hide">
+    <input id="link" placeholder="Cole o link da playlist do Spotify (precisa ser pública)">
+    <button class="btn" id="loadLink">Carregar do Spotify</button>
+    <div class="msg" id="msg"></div>
+    <p style="color:#999;font-size:14px">Alternativa mais confiável: exporte a playlist em CSV em <b>exportify.net</b> (login com Spotify) e escolha o arquivo aqui:</p><input type="file" id="csv" accept=".csv"><p style="color:#999;font-size:14px">Ou cole as músicas aqui, uma por linha, no formato <b>Artista - Música</b>:</p>
+    <textarea id="manual" placeholder="Queen - Bohemian Rhapsody&#10;Racionais MC's - Diário de um Detento"></textarea>
+    <button class="btn" id="loadManual">Usar esta lista</button>
+  </div>
+
+  <div id="game">
+    <div id="rows"></div>
+    <div class="reveal hide" id="reveal"><img id="art" alt=""><div><b id="rt"></b><br><span id="ra" style="color:#aaa"></span></div></div>
+    <div class="bar-wrap">
+      <div class="lbl" id="lbl">0.1 seconds</div><div class="tri" id="tri"></div>
+      <div class="bar" id="bar"><div class="unl" id="unl"></div><div class="prog" id="prog"></div></div>
+    </div>
+    <button class="play" id="play" disabled>▶</button>
+    <div class="bottom">
+      <div class="dd hide" id="dd"></div>
+      <div class="search"><span>🔍</span><input id="q" placeholder="Pesquisar uma música" autocomplete="off"></div>
+      <button class="btn" id="skip">Skip</button>
+    </div>
+    <div class="msg" id="gmsg" style="text-align:center;margin-top:14px">Carregue uma playlist na aba “Playlist” para começar.</div>
+  </div>
+</div>
+
+<script>
+const STAGES=[0.1,0.5,1.5,4,8];
+const P=[0.03,0.09,0.2,0.42,1];       // posição visual do fim de cada etapa na barra
+const $=id=>document.getElementById(id);
+const audio=new Audio();
+let songs=[],queue=[],cur=null,stage=0,guesses=[],done=false,raf=0;
+
+/* ---------- abas ---------- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  $('setup').classList.toggle('hide',t.dataset.t!=='setup');
+  $('game').classList.toggle('hide',t.dataset.t!=='game');
+});
+const goGame=()=>document.querySelector('[data-t=game]').click();
+
+/* ---------- carregar playlist ---------- */
+const PROXIES=[
+ ['codetabs',u=>'https://api.codetabs.com/v1/proxy/?quest='+encodeURIComponent(u)],
+ ['allorigins',u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u)],
+ ['corsproxy',u=>'https://corsproxy.io/?url='+encodeURIComponent(u)],
+ ['thingproxy',u=>'https://thingproxy.freeboard.io/fetch/'+u],
+ ['cors.lol',u=>'https://api.cors.lol/?url='+encodeURIComponent(u)]];
+function findKey(o,k){ if(!o||typeof o!=='object')return null; if(Array.isArray(o[k]))return o[k];
+  for(const v of Object.values(o)){const r=findKey(v,k); if(r)return r;} return null;}
+async function timed(url){const c=new AbortController();const t=setTimeout(()=>c.abort(),9000);
+  try{return await fetch(url,{signal:c.signal});}finally{clearTimeout(t);}}
+$('loadLink').onclick=async()=>{
+  const m=$('link').value.match(/playlist\/([A-Za-z0-9]+)/);
+  if(!m){$('msg').textContent='Link inválido. Use algo como open.spotify.com/playlist/...';return;}
+  const url='https://open.spotify.com/embed/playlist/'+m[1];
+  const log=[];
+  if(location.protocol.startsWith('http')){
+    $('msg').textContent='Lendo a playlist...';
+    try{
+      const r=await fetch('/api/playlist?id='+m[1]);const d=await r.json();
+      if(r.ok&&Array.isArray(d)&&d.length){setSongs(d);return;}
+      log.push('servidor: '+(d.error||'erro'));
+    }catch(e){log.push('servidor: não respondeu');}
+  }
+  for(const [name,p] of PROXIES){
+    $('msg').textContent='Tentando '+name+'... ('+log.length+'/'+PROXIES.length+' falharam)';
+    try{
+      const r=await timed(p(url));
+      if(!r.ok){log.push(name+': HTTP '+r.status);continue;}
+      const html=await r.text();
+      const j=html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      if(!j){log.push(name+': página sem dados da playlist');continue;}
+      const list=findKey(JSON.parse(j[1]),'trackList');
+      if(!list||!list.length){log.push(name+': lista de faixas vazia');continue;}
+      setSongs(list.map(t=>({title:t.title,artist:(t.subtitle||'').replace(/\u00a0/g,' '),url:t.audioPreview&&t.audioPreview.url||null})));
+      return;
+    }catch(e){log.push(name+': '+(e.name==='AbortError'?'demorou demais':'bloqueado/offline'));}
+  }
+  $('msg').innerHTML='Nenhum proxy funcionou:<br>'+log.join('<br>')+'<br><b>Use a opção do CSV abaixo</b> (é a mais confiável).';
+};
+/* ---------- CSV (Exportify etc.) ---------- */
+function parseCSV(t){const rows=[];let r=[],c='',q=false;
+  for(let i=0;i<t.length;i++){const ch=t[i];
+    if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}
+    else if(ch==='"')q=true;
+    else if(ch===','){r.push(c);c='';}
+    else if(ch==='\n'){r.push(c);rows.push(r);r=[];c='';}
+    else if(ch!=='\r')c+=ch;}
+  if(c||r.length){r.push(c);rows.push(r);} return rows;}
+$('csv').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rows=parseCSV((await f.text()).replace(/^\uFEFF/,''));
+  const h=rows[0].map(x=>x.toLowerCase());
+  const ti=h.findIndex(x=>x.includes('track name')||x==='name'||x==='title'||x==='song');
+  const ai=h.findIndex(x=>x.includes('artist'));
+  if(ti<0){$('msg').textContent='Não achei a coluna do nome da música no CSV.';return;}
+  const l=rows.slice(1).filter(r=>r[ti]).map(r=>({title:r[ti],artist:ai<0?'':(r[ai]||'').split(';').join(', ')}));
+  if(l.length<2){$('msg').textContent='CSV sem músicas suficientes.';return;}
+  setSongs(l);
+};
+$('loadManual').onclick=()=>{
+  const l=$('manual').value.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>{
+    const i=s.indexOf(' - '); return i<0?{title:s,artist:''}:{artist:s.slice(0,i),title:s.slice(i+3)};});
+  if(l.length<2){$('msg').textContent='Coloque pelo menos 2 músicas.';return;}
+  setSongs(l);
+};
+function setSongs(l){songs=l.map((s,i)=>({...s,id:i}));queue=[];$('msg').textContent=songs.length+' músicas carregadas!';goGame();nextRound();}
+
+/* ---------- áudio (prévia de 30s) ---------- */
+async function ensureAudio(s){
+  if(s.url||s.bad)return;
+  try{
+    const r=await fetch('https://itunes.apple.com/search?media=music&entity=song&limit=5&term='+encodeURIComponent(s.artist+' '+s.title));
+    const d=(await r.json()).results.find(x=>x.previewUrl);
+    if(d){s.url=d.previewUrl;s.art=d.artworkUrl100;} else s.bad=true;
+  }catch(e){s.bad=true;}
+}
+
+/* ---------- rodadas ---------- */
+async function nextRound(){
+  if(!songs.length)return;
+  audio.pause();cancelAnimationFrame(raf);
+  done=false;stage=0;guesses=[];$('reveal').classList.add('hide');
+  $('skip').textContent='Skip';$('play').disabled=true;$('play').textContent='▶';
+  $('gmsg').textContent='Carregando música...';render();
+  for(let tries=0;tries<10;tries++){
+    if(!queue.length)queue=songs.map(s=>s).sort(()=>Math.random()-.5);
+    cur=queue.pop();
+    await ensureAudio(cur);
+    if(cur.url)break; cur=null;
+  }
+  if(!cur){$('gmsg').textContent='Não achei prévia de áudio para essas músicas. Tente outra playlist.';return;}
+  audio.src=cur.url;$('play').disabled=false;$('gmsg').textContent='';render();
+}
+const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\(.*?\)|\[.*?\]/g,'').replace(/[^a-z0-9]/g,'');
+function guess(s){
+  if(done||!cur)return;
+  const ok=s.id===cur.id||norm(s.title)===norm(cur.title);
+  guesses.push(ok?{t:'ok',s}:{t:'bad',s});
+  if(ok)finish(true);else advance();
+  $('q').value='';$('dd').classList.add('hide');
+}
+function advance(){ if(guesses.length>=STAGES.length)finish(false);else{stage=guesses.length;render();} }
+$('skip').onclick=()=>{
+  if(done){nextRound();return;}
+  if(!cur)return; guesses.push({t:'skip'});advance();
+};
+async function finish(win){
+  done=true;stage=STAGES.length-1;
+  $('rt').textContent=cur.title;$('ra').textContent=cur.artist;
+  $('art').src=cur.art||'';$('art').style.display=cur.art?'block':'none';
+  $('reveal').classList.remove('hide');
+  $('skip').textContent='Próxima';
+  $('gmsg').textContent=win?'Acertou! 🎉':'Não foi dessa vez.';
+  render();
+  if(!cur.art){try{const r=await fetch('https://itunes.apple.com/search?media=music&entity=song&limit=1&term='+encodeURIComponent(cur.artist+' '+cur.title));
+    const d=(await r.json()).results[0];if(d){cur.art=d.artworkUrl100;$('art').src=cur.art;$('art').style.display='block';}}catch(e){}}
+}
+
+/* ---------- render ---------- */
+function render(){
+  $('rows').innerHTML=STAGES.map((_,i)=>{
+    const g=guesses[i];
+    if(!g)return '<div class="row"></div>';
+    if(g.t==='skip')return '<div class="row skip">Pulou</div>';
+    return `<div class="row ${g.t}">${g.t==='ok'?'✓':'✗'}&nbsp;${esc(g.s.artist?g.s.artist+' - ':'')}${esc(g.s.title)}</div>`;
+  }).join('');
+  const w=P[stage]*100+'%';
+  $('unl').style.width=w;$('lbl').style.left=w;$('tri').style.left=w;
+  $('lbl').textContent=STAGES[stage]+' seconds';
+  if(!$('bar').querySelector('.mk'))P.slice(0,-1).forEach(p=>{const m=document.createElement('div');m.className='mk';m.style.left=p*100+'%';$('bar').appendChild(m);});
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function pos(t){let prevT=0,prevP=0;for(let i=0;i<STAGES.length;i++){if(t<=STAGES[i])return prevP+(P[i]-prevP)*((t-prevT)/(STAGES[i]-prevT));prevT=STAGES[i];prevP=P[i];}return 1;}
+
+/* ---------- play ---------- */
+$('play').onclick=()=>{
+  if(!audio.paused){stop();return;}
+  audio.currentTime=0;audio.play();$('play').textContent='⏸';tick();
+};
+function stop(){audio.pause();cancelAnimationFrame(raf);$('play').textContent='▶';$('prog').style.width='0';}
+function tick(){
+  const lim=done?30:STAGES[stage];
+  $('prog').style.width=pos(Math.min(audio.currentTime,lim))*100+'%';
+  if(audio.currentTime>=lim||audio.ended){stop();return;}
+  raf=requestAnimationFrame(tick);
+}
+
+/* ---------- busca ---------- */
+$('q').addEventListener('input',()=>{
+  const v=norm($('q').value);const dd=$('dd');
+  if(!v||!songs.length){dd.classList.add('hide');return;}
+  const r=songs.filter(s=>norm(s.title+s.artist).includes(v)).slice(0,8);
+  dd.innerHTML=r.map(s=>`<div data-i="${s.id}">${esc(s.title)} <small>${esc(s.artist)}</small></div>`).join('');
+  dd.classList.toggle('hide',!r.length);
+});
+$('dd').addEventListener('click',e=>{const d=e.target.closest('[data-i]');if(d)guess(songs[+d.dataset.i]);});
+render();
+if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("/sw.js").catch(()=>{});
+</script>
+</body>
+</html>
