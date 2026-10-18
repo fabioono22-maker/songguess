@@ -21,6 +21,9 @@ STATIC = {
 }
 
 
+AUDIO_HOSTS = (".scdn.co", ".mzstatic.com", ".apple.com")
+
+
 def get(url, headers=None):
     req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=15) as r:
@@ -104,6 +107,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, (HERE / "songguess.html").read_bytes(), "text/html; charset=utf-8")
         elif u.path in STATIC:
             self.send(200, (HERE / u.path[1:]).read_bytes(), STATIC[u.path])
+        elif u.path == "/api/audio":
+            link = urllib.parse.parse_qs(u.query).get("u", [""])[0]
+            p = urllib.parse.urlparse(link)
+            if p.scheme != "https" or not (p.hostname or "").endswith(AUDIO_HOSTS):
+                return self.send(400, json.dumps({"error": "origem de áudio não permitida"}))
+            try:
+                req = urllib.request.Request(link, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    data, ctype = r.read(), r.headers.get("Content-Type", "audio/mpeg")
+                self.send(200, data, ctype)
+            except Exception as e:
+                self.send(502, json.dumps({"error": str(e)}))
         elif u.path == "/api/playlist":
             pid = urllib.parse.parse_qs(u.query).get("id", [""])[0]
             if not re.fullmatch(r"[A-Za-z0-9]+", pid):

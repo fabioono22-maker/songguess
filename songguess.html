@@ -14,7 +14,7 @@
 <link rel="icon" href="/icon-192.png">
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#18191b;color:#eee;font-family:"Segoe UI",system-ui,sans-serif;display:flex;justify-content:center}
+body{overflow-x:hidden;margin:0;background:#18191b;color:#eee;font-family:"Segoe UI",system-ui,sans-serif;display:flex;justify-content:center}
 .app{width:100%;max-width:900px;padding:16px}
 h1{text-align:center;font-size:64px;font-weight:900;letter-spacing:-2px;margin:6px 0 14px}
 .tabs{display:flex;background:#27282a;border-radius:8px;padding:5px;max-width:560px;margin:0 auto 20px}
@@ -175,7 +175,7 @@ async function ensureAudio(s){
 /* ---------- rodadas ---------- */
 async function nextRound(){
   if(!songs.length)return;
-  audio.pause();cancelAnimationFrame(raf);
+  stopPlay();
   done=false;stage=0;guesses=[];$('reveal').classList.add('hide');
   $('skip').textContent='Skip';$('play').disabled=true;$('play').textContent='▶';
   $('gmsg').textContent='Carregando música...';render();
@@ -186,7 +186,7 @@ async function nextRound(){
     if(cur.url)break; cur=null;
   }
   if(!cur){$('gmsg').textContent='Não achei prévia de áudio para essas músicas. Tente outra playlist.';return;}
-  audio.src=cur.url;$('play').disabled=false;$('gmsg').textContent='';render();
+  await prepare(cur);$('play').disabled=false;$('gmsg').textContent='';render();
 }
 const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\(.*?\)|\[.*?\]/g,'').replace(/[^a-z0-9]/g,'');
 function guess(s){
@@ -196,13 +196,13 @@ function guess(s){
   if(ok)finish(true);else advance();
   $('q').value='';$('dd').classList.add('hide');
 }
-function advance(){ if(guesses.length>=STAGES.length)finish(false);else{stage=guesses.length;render();} }
+function advance(){ stopPlay(); if(guesses.length>=STAGES.length)finish(false);else{stage=guesses.length;render();} }
 $('skip').onclick=()=>{
   if(done){nextRound();return;}
   if(!cur)return; guesses.push({t:'skip'});advance();
 };
 async function finish(win){
-  done=true;stage=STAGES.length-1;
+  stopPlay();done=true;stage=STAGES.length-1;
   $('rt').textContent=cur.title;$('ra').textContent=cur.artist;
   $('art').src=cur.art||'';$('art').style.display=cur.art?'block':'none';
   $('reveal').classList.remove('hide');
@@ -222,23 +222,56 @@ function render(){
     return `<div class="row ${g.t}">${g.t==='ok'?'✓':'✗'}&nbsp;${esc(g.s.artist?g.s.artist+' - ':'')}${esc(g.s.title)}</div>`;
   }).join('');
   const w=P[stage]*100+'%';
-  $('unl').style.width=w;$('lbl').style.left=w;$('tri').style.left=w;
-  $('lbl').textContent=STAGES[stage]+' seconds';
+  const end=P[stage]>=0.85, L=$('lbl');
+  $('unl').style.width=w;
+  L.style.left=end?'auto':w;L.style.right=end?'0':'auto';L.style.transform=end?'none':'translateX(-12px)';
+  $('tri').style.left=end?'calc(100% - 10px)':w;
+  L.textContent=done?'Prévia completa':STAGES[stage]+' seconds';
   if(!$('bar').querySelector('.mk'))P.slice(0,-1).forEach(p=>{const m=document.createElement('div');m.className='mk';m.style.left=p*100+'%';$('bar').appendChild(m);});
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function pos(t){let prevT=0,prevP=0;for(let i=0;i<STAGES.length;i++){if(t<=STAGES[i])return prevP+(P[i]-prevP)*((t-prevT)/(STAGES[i]-prevT));prevT=STAGES[i];prevP=P[i];}return 1;}
 
-/* ---------- play ---------- */
-$('play').onclick=()=>{
-  if(!audio.paused){stop();return;}
-  audio.currentTime=0;audio.play();$('play').textContent='⏸';tick();
+/* ---------- play (Web Audio: o mesmo trecho exato a cada vez) ---------- */
+let actx=null,src=null,t0=0,playing=false;
+const ctxGet=()=>actx||(actx=new (window.AudioContext||window.webkitAudioContext)());
+async function fetchBuf(url){
+  const tries=location.protocol.startsWith('http')?['/api/audio?u='+encodeURIComponent(url),url]:[url];
+  for(const u of tries){try{const r=await fetch(u);if(r.ok)return await r.arrayBuffer();}catch(e){}}
+  return null;
+}
+async function prepare(s){
+  if(s.buf||s.nobuf)return;
+  const ab=await fetchBuf(s.url);
+  if(ab){try{s.buf=await ctxGet().decodeAudioData(ab);}catch(e){}}
+  if(!s.buf)s.nobuf=true;
+}
+function stopPlay(){
+  cancelAnimationFrame(raf);
+  if(src){src.onended=null;try{src.stop();}catch(e){}src=null;}
+  audio.pause();playing=false;$('play').textContent='▶';$('prog').style.width='0';
+}
+$('play').onclick=async()=>{
+  if(playing){stopPlay();return;}
+  if(!cur)return;
+  if(cur.buf){
+    const c=ctxGet();if(c.state==='suspended')await c.resume();
+    src=c.createBufferSource();src.buffer=cur.buf;src.connect(c.destination);
+    src.onended=stopPlay;
+    src.start(0,0,done?cur.buf.duration:Math.min(STAGES[stage],cur.buf.duration));
+    t0=c.currentTime;
+  }else{ // plano B: elemento <audio> comum
+    if(audio.getAttribute('src')!==cur.url)audio.src=cur.url;
+    audio.currentTime=0;audio.play();
+  }
+  playing=true;$('play').textContent='⏸';tick();
 };
-function stop(){audio.pause();cancelAnimationFrame(raf);$('play').textContent='▶';$('prog').style.width='0';}
 function tick(){
-  const lim=done?30:STAGES[stage];
-  $('prog').style.width=pos(Math.min(audio.currentTime,lim))*100+'%';
-  if(audio.currentTime>=lim||audio.ended){stop();return;}
+  if(!playing)return;
+  const t=cur.buf?actx.currentTime-t0:audio.currentTime;
+  const L=done?(cur.buf?cur.buf.duration:30):STAGES[stage];
+  $('prog').style.width=(done?Math.min(t/L,1):pos(Math.min(t,L)))*100+'%';
+  if(!cur.buf&&(t>=L||audio.ended)){stopPlay();return;}
   raf=requestAnimationFrame(tick);
 }
 
